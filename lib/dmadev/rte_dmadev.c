@@ -130,26 +130,17 @@ static int
 dma_fp_data_prepare(void)
 {
 	size_t size;
-	void *ptr;
 	int i;
 
 	if (rte_dma_fp_objs != NULL)
 		return 0;
 
-	/* Fast-path object must align cacheline, but the return value of malloc
-	 * may not be aligned to the cache line. Therefore, extra memory is
-	 * applied for realignment.
-	 * note: We do not call posix_memalign/aligned_alloc because it is
-	 * version dependent on libc.
-	 */
-	size = dma_devices_max * sizeof(struct rte_dma_fp_object) +
-		RTE_CACHE_LINE_SIZE;
-	ptr = malloc(size);
-	if (ptr == NULL)
-		return -ENOMEM;
-	memset(ptr, 0, size);
+	/* Fast-path object must align cacheline */
+	size = dma_devices_max * sizeof(struct rte_dma_fp_object);
+	rte_dma_fp_objs = rte_zmalloc( NULL, size, RTE_CACHE_LINE_SIZE);
+    if (rte_dma_fp_objs == NULL)
+        return -ENOMEM;
 
-	rte_dma_fp_objs = RTE_PTR_ALIGN(ptr, RTE_CACHE_LINE_SIZE);
 	for (i = 0; i < dma_devices_max; i++)
 		dma_fp_object_dummy(&rte_dma_fp_objs[i]);
 
