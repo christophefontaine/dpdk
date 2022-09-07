@@ -1305,21 +1305,22 @@ rte_sched_subport_config(struct rte_sched_port *port,
 
 		/* Large data structures */
 		s->pipe = (struct rte_sched_pipe *)
-			(s->memory + rte_sched_subport_get_array_base(params,
+			((intptr_t)s->memory + rte_sched_subport_get_array_base(params,
 			e_RTE_SCHED_SUBPORT_ARRAY_PIPE));
 		s->queue = (struct rte_sched_queue *)
-			(s->memory + rte_sched_subport_get_array_base(params,
+			((intptr_t)s->memory + rte_sched_subport_get_array_base(params,
 			e_RTE_SCHED_SUBPORT_ARRAY_QUEUE));
 		s->queue_extra = (struct rte_sched_queue_extra *)
-			(s->memory + rte_sched_subport_get_array_base(params,
+			((intptr_t)s->memory + rte_sched_subport_get_array_base(params,
 			e_RTE_SCHED_SUBPORT_ARRAY_QUEUE_EXTRA));
 		s->pipe_profiles = (struct rte_sched_pipe_profile *)
-			(s->memory + rte_sched_subport_get_array_base(params,
+			((intptr_t)s->memory + rte_sched_subport_get_array_base(params,
 			e_RTE_SCHED_SUBPORT_ARRAY_PIPE_PROFILES));
-		s->bmp_array =  s->memory + rte_sched_subport_get_array_base(
-				params, e_RTE_SCHED_SUBPORT_ARRAY_BMP_ARRAY);
+		s->bmp_array = (uint8_t*)
+			((intptr_t)s->memory + rte_sched_subport_get_array_base(params,
+			e_RTE_SCHED_SUBPORT_ARRAY_BMP_ARRAY));
 		s->queue_array = (struct rte_mbuf **)
-			(s->memory + rte_sched_subport_get_array_base(params,
+			((intptr_t)s->memory + rte_sched_subport_get_array_base(params,
 			e_RTE_SCHED_SUBPORT_ARRAY_QUEUE_ARRAY));
 
 		/* Pipe profile table */
