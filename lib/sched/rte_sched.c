@@ -212,7 +212,10 @@ struct rte_sched_subport {
 	struct rte_sched_pipe_profile *pipe_profiles;
 	uint8_t *bmp_array;
 	struct rte_mbuf **queue_array;
-	uint8_t memory[0] __rte_cache_aligned;
+	/* TC oversubscription activation */
+	int tc_ov_enabled;
+
+	uint8_t memory[0] __rte_cache_aligned;  /* Variable length data */
 } __rte_cache_aligned;
 
 struct rte_sched_port {
@@ -244,7 +247,7 @@ struct rte_sched_port {
 
 	/* Large data structures */
 	struct rte_sched_subport_profile *subport_profiles;
-	struct rte_sched_subport *subports[0] __rte_cache_aligned;
+	struct rte_sched_subport *subports[] __rte_cache_aligned;
 } __rte_cache_aligned;
 
 enum rte_sched_subport_array {
