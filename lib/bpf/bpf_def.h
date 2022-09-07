@@ -137,7 +137,7 @@ struct ebpf_insn {
 	uint8_t src_reg:4;
 	int16_t off;
 	int32_t imm;
-};
+} __rte_aligned(8);
 
 /*
  * eBPF allows functions with R1-R5 as arguments.

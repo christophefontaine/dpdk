@@ -3204,7 +3204,7 @@ run_test(const struct bpf_test *tst)
 	int64_t rc;
 	struct rte_bpf *bpf;
 	struct rte_bpf_jit jit;
-	uint8_t tbuf[tst->arg_sz];
+	uint8_t tbuf[tst->arg_sz] __rte_aligned(64);
 
 	printf("%s(%s) start\n", __func__, tst->name);
 
@@ -3334,7 +3334,8 @@ static int
 test_bpf_filter_sanity(pcap_t *pcap)
 {
 	const uint32_t plen = 100;
-	struct rte_mbuf mb, *m;
+	struct rte_mbuf mb __rte_aligned(64);
+	struct rte_mbuf *m;
 	uint8_t tbuf[RTE_MBUF_DEFAULT_BUF_SIZE];
 	struct {
 		struct rte_ether_hdr eth_hdr;

@@ -44,7 +44,7 @@ typedef RTE_ATOMIC(uint64_t) rte_trace_point_t;
 
 /** @internal Helper macro to support RTE_TRACE_POINT and RTE_TRACE_POINT_FP */
 #define __RTE_TRACE_POINT(_mode, _tp, _args, ...) \
-extern rte_trace_point_t __##_tp; \
+extern rte_trace_point_t __##_tp __rte_aligned(64); \
 static __rte_always_inline void \
 _tp _args \
 { \
