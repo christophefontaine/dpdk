@@ -45,7 +45,7 @@ graph_fp_mem_calc_size(struct graph *graph)
 }
 
 static void
-graph_header_popluate(struct graph *_graph)
+graph_header_populate(struct graph *_graph)
 {
 	struct rte_graph *graph = _graph->graph;
 
@@ -188,7 +188,7 @@ graph_fp_mem_populate(struct graph *graph)
 {
 	int rc;
 
-	graph_header_popluate(graph);
+	graph_header_populate(graph);
 	if (graph_pcap_is_enable())
 		graph_pcap_init(graph);
 	graph_nodes_populate(graph);
