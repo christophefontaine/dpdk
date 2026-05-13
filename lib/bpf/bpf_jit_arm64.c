@@ -8,6 +8,7 @@
 
 #include <rte_common.h>
 #include <rte_byteorder.h>
+#include <rte_mbuf.h>
 
 #include "bpf_impl.h"
 
@@ -1123,6 +1124,83 @@ emit_branch(struct a64_jit_ctx *ctx, uint8_t op, uint32_t i, int16_t off)
 	emit_b_cond(ctx, ebpf_to_a64_cond(op), jump_offset_get(ctx, i, off));
 }
 
+static int16_t
+emit_call_sz(void *func)
+{
+	struct a64_jit_ctx call_ctx = {0};
+	emit_call(&call_ctx, 0, func);
+	return call_ctx.idx;
+}
+
+/*
+ * Emit code for BPF_LD | BPF_ABS/IND: load from packet.
+ * Implements both a fast path, which computes the offset and read directly
+ * and a slow path, which calls __rte_pktmbuf_read(mbuf, off, len, buf)
+ * when the data is not in the first segment.
+ */
+static void
+emit_ld_mbuf(struct a64_jit_ctx *ctx, uint32_t op, uint8_t tmp1, uint8_t tmp2,
+	uint8_t src, int32_t imm)
+{
+	uint8_t r0 = ebpf_to_a64_reg(ctx, EBPF_REG_0);
+	uint8_t r6 = ebpf_to_a64_reg(ctx, EBPF_REG_6);
+	uint32_t mode = BPF_MODE(op);
+	uint32_t opsz = BPF_SIZE(op);
+	uint32_t sz = bpf_size(opsz);
+
+	/* r0 = mbuf (R6) */
+	emit_mov_64(ctx, A64_R(0), r6);
+
+	/* r1 = off: for ABS use imm, for IND use src + imm */
+	if (mode == BPF_ABS) {
+		emit_mov_imm(ctx, 0, A64_R(1), imm);
+	} else {
+		emit_mov_imm(ctx, 0, tmp2, imm);
+		emit_add(ctx, 0, tmp2, src);
+		emit_mov_64(ctx, A64_R(1), tmp2);
+	}
+
+	/* r2 = len, 1/2/4 bytes */
+	emit_mov_imm32(ctx, 0, A64_R(2), sz);
+	/* r3 = buf (SP) */
+	emit_mov_64(ctx, A64_R(3), A64_SP);
+
+	/* tmp1 = mbuf->data_len */
+	emit_mov_imm(ctx, 1, tmp1, offsetof(struct rte_mbuf, data_len));
+	emit_ldr(ctx, BPF_W, tmp1, r6, tmp1);
+
+	/* tmp2 = off + sz */
+	emit_add_imm_64(ctx, tmp2, A64_R(1), sz);
+	/* if off+sz > data_len, jump to slow path */
+	emit_cmp(ctx, 1, tmp2, tmp1);
+	emit_b_cond(ctx, A64_HI, 8);
+
+	/* Fast path, read directly, pointer to the data will be in A64_R(0) */
+	/* A64_R(0) = mbuf->buf_addr */
+	emit_mov_imm(ctx, 1, tmp1, offsetof(struct rte_mbuf, buf_addr));
+	emit_ldr(ctx, EBPF_DW, A64_R(0), r6, tmp1);
+	/* tmp2 = * mbuf->data_off */
+	emit_mov_imm(ctx, 1, tmp2, offsetof(struct rte_mbuf, data_off));
+	emit_ldr(ctx, BPF_H, tmp2, r6, tmp2);
+
+	/* A64_R(0) += data_off + off */
+	emit_add(ctx, 1, A64_R(0), tmp2);
+	emit_add(ctx, 1, A64_R(0), A64_R(1));
+
+	/* End of Fast Path, skip slow path */
+	emit_b(ctx, emit_call_sz(__rte_pktmbuf_read) + 1);
+
+	/* slow path, call __rte_pktmbuf_read */
+	emit_call(ctx, tmp1, __rte_pktmbuf_read);
+	/* check return value of __rte_pktmbuf_read */
+	emit_return_zero_if_src_zero(ctx, 1, A64_R(0));
+
+	/* A64_R(0) points to the data, load 1/2/4 bytes into r0*/
+	emit_ldr(ctx, opsz, r0, A64_R(0), A64_ZR);
+	if (sz != sizeof(uint8_t))
+		emit_be(ctx, r0, sz * CHAR_BIT);
+}
+
 static void
 check_program_has_call(struct a64_jit_ctx *ctx, struct rte_bpf *bpf)
 {
@@ -1137,6 +1215,13 @@ check_program_has_call(struct a64_jit_ctx *ctx, struct rte_bpf *bpf)
 		switch (op) {
 		/* Call imm */
 		case (BPF_JMP | EBPF_CALL):
+		/* BPF_LD | BPF_ABS/IND use __rte_pktmbuf_read */
+		case (BPF_LD | BPF_ABS | BPF_B):
+		case (BPF_LD | BPF_ABS | BPF_H):
+		case (BPF_LD | BPF_ABS | BPF_W):
+		case (BPF_LD | BPF_IND | BPF_B):
+		case (BPF_LD | BPF_IND | BPF_H):
+		case (BPF_LD | BPF_IND | BPF_W):
 			ctx->foundcall = 1;
 			return;
 		}
@@ -1337,6 +1422,15 @@ emit(struct a64_jit_ctx *ctx, struct rte_bpf *bpf)
 			u64 = RTE_SHIFT_VAL64(ins[1].imm, 32) | (uint32_t)imm;
 			emit_mov_imm(ctx, 1, dst, u64);
 			i++;
+			break;
+		/* load absolute/indirect from packet */
+		case (BPF_LD | BPF_ABS | BPF_B):
+		case (BPF_LD | BPF_ABS | BPF_H):
+		case (BPF_LD | BPF_ABS | BPF_W):
+		case (BPF_LD | BPF_IND | BPF_B):
+		case (BPF_LD | BPF_IND | BPF_H):
+		case (BPF_LD | BPF_IND | BPF_W):
+			emit_ld_mbuf(ctx, op, tmp1, tmp2, src, imm);
 			break;
 		/* *(size *)(dst + off) = src */
 		case (BPF_STX | BPF_MEM | BPF_B):

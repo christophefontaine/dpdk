@@ -2751,6 +2751,79 @@ static const struct rte_bpf_xsym test_call5_xsym[] = {
 };
 
 /* load mbuf (BPF_ABS/BPF_IND) test-cases */
+static const struct ebpf_insn test_ld_mbuf0_prog[] = {
+	/* BPF_ABS/BPF_IND implicitly expect mbuf ptr in R6 */
+	{
+		.code = (EBPF_ALU64 | EBPF_MOV | BPF_X),
+		.dst_reg = EBPF_REG_6,
+		.src_reg = EBPF_REG_1,
+	},
+	/* load IPv4 version and IHL */
+	{
+		.code = (BPF_LD | BPF_ABS | BPF_B),
+		.imm = offsetof(struct rte_ipv4_hdr, version_ihl),
+	},
+	{
+		.code = (BPF_JMP | EBPF_EXIT),
+	},
+};
+
+/* load mbuf (BPF_ABS/BPF_IND) test-cases */
+static const struct ebpf_insn test_ld_slow_mbuf0_prog[] = {
+	/* BPF_ABS/BPF_IND implicitly expect mbuf ptr in R6 */
+	{
+		.code = (EBPF_ALU64 | EBPF_MOV | BPF_X),
+		.dst_reg = EBPF_REG_6,
+		.src_reg = EBPF_REG_1,
+	},
+	/* load from chained mbuf */
+	{
+		.code = (BPF_LD | BPF_ABS | BPF_B),
+		/* 201: second mbuf, built by test_ld_mbuf1_prepare */
+		.imm = 201 + 0x42,
+	},
+	{
+		.code = (BPF_JMP | EBPF_EXIT),
+	},
+};
+
+static const struct ebpf_insn test_ld_ind_mbuf0_prog[] = {
+	/* BPF_ABS/BPF_IND implicitly expect mbuf ptr in R6 */
+	{
+		.code = (EBPF_ALU64 | EBPF_MOV | BPF_X),
+		.dst_reg = EBPF_REG_6,
+		.src_reg = EBPF_REG_1,
+	},
+	{
+		/* Set return value to one. */
+		.code = (EBPF_ALU64 | EBPF_MOV | BPF_K),
+		.dst_reg = EBPF_REG_0,
+		.imm = 0,
+	},
+	/* load IPv4 version and IHL */
+	{
+		.code = (BPF_LD | BPF_IND | BPF_B),
+		.src_reg = EBPF_REG_0,
+		.imm = offsetof(struct rte_ipv4_hdr, version_ihl),
+	},
+	{
+		.code = (BPF_JMP | EBPF_EXIT),
+	},
+};
+
+static int
+test_ld_mbuf0_check(uint64_t rc, const void *arg)
+{
+	return cmp_res(__func__, 0x45, rc, arg, arg, 0);
+}
+
+static int
+test_ld_slow_mbuf0_check(uint64_t rc, const void *arg)
+{
+	return cmp_res(__func__, 0x42, rc, arg, arg, 0);
+}
+
+/* load mbuf (BPF_ABS/BPF_IND) test-cases */
 static const struct ebpf_insn test_ld_mbuf1_prog[] = {
 
 	/* BPF_ABS/BPF_IND implicitly expect mbuf ptr in R6 */
@@ -3415,6 +3488,54 @@ static const struct bpf_test tests[] = {
 		.prepare = test_store1_prepare,
 		.check_result = test_call5_check,
 		/* for now don't support function calls on 32 bit platform */
+		.allow_fail = (sizeof(uint64_t) != sizeof(uintptr_t)),
+	},
+	{
+		.name = "test_ld_abs_mbuf0",
+		.arg_sz = sizeof(struct dummy_mbuf),
+		.prm = {
+			.ins = test_ld_mbuf0_prog,
+			.nb_ins = RTE_DIM(test_ld_mbuf0_prog),
+			.prog_arg = {
+				.type = RTE_BPF_ARG_PTR_MBUF,
+				.buf_size = sizeof(struct dummy_mbuf),
+			},
+		},
+		.prepare = test_ld_mbuf1_prepare,
+		.check_result = test_ld_mbuf0_check,
+		/* mbuf as input argument is not supported on 32 bit platform */
+		.allow_fail = (sizeof(uint64_t) != sizeof(uintptr_t)),
+	},
+	{
+		.name = "test_ld_slow_mbuf0",
+		.arg_sz = sizeof(struct dummy_mbuf),
+		.prm = {
+			.ins = test_ld_slow_mbuf0_prog,
+			.nb_ins = RTE_DIM(test_ld_slow_mbuf0_prog),
+			.prog_arg = {
+				.type = RTE_BPF_ARG_PTR_MBUF,
+				.buf_size = sizeof(struct dummy_mbuf),
+			},
+		},
+		.prepare = test_ld_mbuf1_prepare,
+		.check_result = test_ld_slow_mbuf0_check,
+		/* mbuf as input argument is not supported on 32 bit platform */
+		.allow_fail = (sizeof(uint64_t) != sizeof(uintptr_t)),
+	},
+	{
+		.name = "test_ld_ind_mbuf0",
+		.arg_sz = sizeof(struct dummy_mbuf),
+		.prm = {
+			.ins = test_ld_ind_mbuf0_prog,
+			.nb_ins = RTE_DIM(test_ld_ind_mbuf0_prog),
+			.prog_arg = {
+				.type = RTE_BPF_ARG_PTR_MBUF,
+				.buf_size = sizeof(struct dummy_mbuf),
+			},
+		},
+		.prepare = test_ld_mbuf1_prepare,
+		.check_result = test_ld_mbuf0_check,
+		/* mbuf as input argument is not supported on 32 bit platform */
 		.allow_fail = (sizeof(uint64_t) != sizeof(uintptr_t)),
 	},
 	{
