@@ -1408,7 +1408,7 @@ emit(struct a64_jit_ctx *ctx, struct rte_bpf *bpf)
 			break;
 		/* Return r0 */
 		case (BPF_JMP | EBPF_EXIT):
-			emit_epilogue(ctx);
+			emit_b(ctx, (ctx->program_start + ctx->program_sz) - ctx->idx);
 			break;
 		default:
 			RTE_BPF_LOG_LINE(ERR,
@@ -1417,6 +1417,7 @@ emit(struct a64_jit_ctx *ctx, struct rte_bpf *bpf)
 			return -EINVAL;
 		}
 	}
+	emit_epilogue(ctx);
 	rc = check_invalid_args(ctx, ctx->idx);
 
 	return rc;
